@@ -12,8 +12,18 @@
 #   openssl openssh-server openvpn wget tcpdump  update-inetd  xinetd
 #
 ARG registry
-FROM $registry/labtainer.firefox3
-
+FROM $registry/labtainer.base2
+#FROM $registry/labtainer.network
+#FROM $registry/labtainer.centos
+#FROM $registry/labtainer.lamp
+#
+#  lab is the fully qualified image name, e.g., mylab.some_container.student
+#  labdir is the name of the lab, e.g., mylab 
+#  imagedir is the name of the container
+#  user_name is the USER from the start.config, if other than ubuntu,
+#            then that user must be added in this dockerfile
+#            before the USER command
+#
 ARG lab
 ARG labdir
 ARG imagedir
@@ -24,23 +34,93 @@ ARG version
 LABEL version=$version
 ENV APT_SOURCE $apt_source
 RUN /usr/bin/apt-source.sh
+RUN sudo apt-get update -y 
+
+RUN sudo apt-get install wget apache2 iptables curl firefox apt-utils openjdk-11-jdk apt-transport-https gpg ssh jq tcpdump tree -y
+
+################ web_demo
+
+# Đặt môi trường không tương tác cho apt
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Cập nhật và cài đặt Apache, PHP, MySQL
+#RUN apt-get update && \
+#  apt-get install -y apache2 php libapache2-mod-php mysql-server php-mysql && \
+#  apt-get clean
+
+# Thay đổi thư mục home cho user mysql
+#RUN usermod -d /var/lib/mysql mysql
+
+# Đảm bảo quyền sở hữu cho www-data
+#RUN chown -R www-data:www-data /var/www/html
+
+# Cấp quyền cho www-data truy cập MySQL socket
+#RUN chown -R mysql:www-data /var/run/mysqld && \
+#  chmod -R 770 /var/run/mysqld && \
+#  chmod 1777 /tmp
+
+# Khởi động cả Apache và MySQL khi container chạy
+# CMD ["sh", "-c", "service mysql start && service apache2 start && tail -f /dev/null"]
+
+############### filebeat
+
+RUN curl -fsSL https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo gpg --dearmor -o /usr/share/keyrings/elastic.gpg
+
+RUN echo "deb [signed-by=/usr/share/keyrings/elastic.gpg] https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee -a /etc/apt/sources.list.d/elastic-7.x.list
+
+RUN sudo apt-get update -y 
+
+RUN sudo apt-get install filebeat -y
+
+############### Filebeat
+
+# Xóa nội dung cũ của filebeat.yml
+RUN echo "" > /etc/filebeat/filebeat.yml
+RUN touch /var/log/iptables.log && chmod 666 /var/log/iptables.log
+# Tạo cấu hình filebeat.yml
+RUN echo "filebeat.config.modules.path: "/etc/filebeat/modules.d/*.yml"\n\
+filebeat.inputs:\n\
+- type: log\n\
+  enabled: true\n\
+  paths:\n\
+    - /var/log/iptables.log\n\
+\n\
+output.logstash:\n\
+  hosts: [\"ipserver:5044\"]" >> /etc/filebeat/filebeat.yml
+
 #
 #  put package installation here, e.g.,
+#     RUN apt-get update && apt-get install -y --no-install-recommends somepackage
+#
+#
+#
+# Install the system files found in the _system directory
 #
 ADD $labdir/$imagedir/sys_tar/sys.tar /
 ADD $labdir/sys_$lab.tar.gz /
 #
-RUN deluser --remove-home ubuntu
 RUN useradd -ms /bin/bash $user_name
 RUN echo "$user_name:$password" | chpasswd
 RUN adduser $user_name sudo
 # replace above with below for centos/fedora
+#RUN usermod $user_name -a -G wheel
+
+
+#
+#  **** Perform all root operations, e.g.,           ****
+#  **** "apt-get install" prior to the USER command. ****
+#
 USER $user_name
 ENV HOME /home/$user_name
+#
+# Install files in the user home directory
+#
 ADD $labdir/$imagedir/home_tar/home.tar $HOME
 # remove after docker fixes problem with empty tars
 RUN rm -f $HOME/home.tar
 ADD $labdir/$lab.tar.gz $HOME
+#
+#  The first thing that executes on the container.
 #
 USER root
 CMD ["/bin/bash", "-c", "exec /sbin/init --log-target=journal 3>&1"]

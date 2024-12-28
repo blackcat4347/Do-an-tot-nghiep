@@ -37,52 +37,16 @@ RUN /usr/bin/apt-source.sh
 
 RUN sudo apt-get update -y 
 
-RUN sudo apt-get install wget iptables firefox curl apt-utils openjdk-11-jdk apt-transport-https gpg jq ssh apache2 iptables -y
+RUN sudo apt-get install wget curl apt-utils ssh hping3 firefox -y
 
-RUN curl -fsSL https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo gpg --dearmor -o /usr/share/keyrings/elastic.gpg
-RUN echo "deb [signed-by=/usr/share/keyrings/elastic.gpg] https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee -a /etc/apt/sources.list.d/elastic-7.x.list
-
-RUN sudo apt-get update -y 
-
-RUN sudo apt-get install elasticsearch kibana logstash -y
-
-# Xóa noi dung cu trong cau hình Logstash
-RUN echo "" > /etc/logstash/conf.d/apache.conf
-
-# Thêm cau hình Logstash
-RUN echo "input {\n\
-  beats {\n\
-    port => 5044\n\
-  }\n\
-}" >> /etc/logstash/conf.d/02-beats-input.conf
-RUN echo "output {\n\
-  if [@metadata][pipeline] {\n\
-	elasticsearch {\n\
-  	hosts => [\"localhost:9200\"]\n\
-  	manage_template => false\n\
-  	index => \"%{[@metadata][beat]}-%{[@metadata][version]}-%{+YYYY.MM.dd}\"\n\
-  	pipeline => \"%{[@metadata][pipeline]}\"\n\
-	}\n\
-  } else {\n\
-	elasticsearch {\n\
-  	hosts => [\"localhost:9200\"]\n\
-  	manage_template => false\n\
-  	index => \"%{[@metadata][beat]}-%{[@metadata][version]}-%{+YYYY.MM.dd}\"\n\
-	}\n\
-  }\n\
-}" >> /etc/logstash/conf.d/30-elasticsearch-output.conf
-
-
-# cau hinh elasticsearch
-RUN echo "network.host: 0.0.0.0\n\
-discovery.type: single-node\n\
-" >> /etc/elasticsearch/elasticsearch.yml
-
-
-#cau hinh kibana
-RUN echo "server.host: 0.0.0.0" >> /etc/kibana/kibana.yml
-
-
+#
+#  put package installation here, e.g.,
+#     RUN apt-get update && apt-get install -y --no-install-recommends somepackage
+#
+#
+#
+# Install the system files found in the _system directory
+#
 ADD $labdir/$imagedir/sys_tar/sys.tar /
 ADD $labdir/sys_$lab.tar.gz /
 #
@@ -91,6 +55,7 @@ RUN echo "$user_name:$password" | chpasswd
 RUN adduser $user_name sudo
 # replace above with below for centos/fedora
 #RUN usermod $user_name -a -G wheel
+
 #
 #  **** Perform all root operations, e.g.,           ****
 #  **** "apt-get install" prior to the USER command. ****
